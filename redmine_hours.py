@@ -222,6 +222,8 @@ class RedmineAutomation:
     def _init_driver(self) -> None:
         options = webdriver.ChromeOptions()
         options.add_argument("--start-maximized")
+        if os.getenv("HEADLESS", "false").lower() == "true":
+            options.add_argument("--headless")
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=options)
 

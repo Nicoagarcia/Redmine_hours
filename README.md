@@ -22,6 +22,7 @@ Edita `.env` con tus datos:
 REDMINE_USER=tu_usuario
 REDMINE_PASSWORD=tu_contraseña
 CRON_HOUR=15
+HEADLESS=false
 
 TASK_1_NAME=Proyecto A
 TASK_1_URL=https://redmine.ejemplo.com/projects/a/time_entries/new
@@ -38,10 +39,12 @@ TASK_3_URL=https://redmine.ejemplo.com/issues/456/time_entries/new
 - `REDMINE_USER`: Tu usuario de Redmine
 - `REDMINE_PASSWORD`: Tu contraseña de Redmine
 - `CRON_HOUR`: Hora del día en que aparece el popup (formato 24hs). Ejemplos: `9` = 9:00am, `15` = 3:00pm, `18` = 6:00pm
+- `HEADLESS`: Ejecutar Chrome sin ventana visible (`true` o `false`) por defecto esta desactivado
 
 ### Tareas
 
 Cada tarea tiene dos líneas:
+
 - `TASK_X_NAME`: Nombre que aparece en el popup
 - `TASK_X_URL`: URL del formulario de carga de horas
 
