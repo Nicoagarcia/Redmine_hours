@@ -11,7 +11,51 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
+import os
 
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
+
+
+def check_and_install_dependencies() -> None:
+    """Verifica e instala dependencias automáticamente en Windows"""
+    if platform.system() != "Windows":
+        return
+
+    required_packages = {
+        "dotenv": "python-dotenv",
+        "selenium": "selenium",
+        "webdriver_manager": "webdriver-manager"
+    }
+
+    missing_packages = []
+    for module_name, package_name in required_packages.items():
+        try:
+            __import__(module_name)
+        except ImportError:
+            missing_packages.append(package_name)
+
+    if missing_packages:
+        logger.info("Primera ejecución - Instalando dependencias...")
+        logger.info("")
+        try:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install"] + missing_packages,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            logger.info("Dependencias instaladas correctamente.")
+            logger.info("")
+        except subprocess.CalledProcessError:
+            logger.error("Error al instalar dependencias. Intenta manualmente:")
+            logger.error(f"  pip install {' '.join(missing_packages)}")
+            sys.exit(1)
+
+
+# Verificar e instalar dependencias en Windows
+check_and_install_dependencies()
+
+# Importar dependencias
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -19,11 +63,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
-
-import os
-
-logging.basicConfig(level=logging.INFO, format="%(message)s")
-logger = logging.getLogger(__name__)
 
 load_dotenv()
 
