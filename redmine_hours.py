@@ -330,7 +330,7 @@ class SchedulerManager:
         if not 0 <= self.hour <= 23:
             logger.error("CRON_HOUR debe ser un número entre 0 y 23 (actual: %s)", self.hour)
             sys.exit(1)
-            if not 0 <= self.minute <= 59:
+        if not 0 <= self.minute <= 59:
             logger.error("CRON_MINUTE debe ser un número entre 0 y 59 (actual: %s)", self.minute)
             sys.exit(1)
 
