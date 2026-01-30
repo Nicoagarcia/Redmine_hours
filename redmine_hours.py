@@ -92,6 +92,7 @@ class Config:
     user: str
     password: str
     cron_hour: int
+    cron_minute: int
     tasks: list[Task]
 
     @classmethod
@@ -99,8 +100,9 @@ class Config:
         user = os.getenv("REDMINE_USER", "")
         password = os.getenv("REDMINE_PASSWORD", "")
         cron_hour = int(os.getenv("CRON_HOUR", "15"))
+        cron_minute = int(os.getenv("CRON_MINUTE", "0"))
         tasks = cls._load_tasks()
-        return cls(user=user, password=password, cron_hour=cron_hour, tasks=tasks)
+        return cls(user=user, password=password, cron_hour=cron_hour, cron_minute=cron_minute ,tasks=tasks)
 
     @staticmethod
     def _load_tasks() -> list[Task]:
@@ -322,10 +324,14 @@ class RedmineAutomation:
 class SchedulerManager:
     """Base class for task schedulers (cross-platform)"""
 
-    def __init__(self, hour: int) -> None:
+    def __init__(self, hour: int, minute: int = 0) -> None:
         self.hour = hour
+        self.minute = minute
         if not 0 <= self.hour <= 23:
             logger.error("CRON_HOUR debe ser un número entre 0 y 23 (actual: %s)", self.hour)
+            sys.exit(1)
+        if not 0 <= self.minute <= 59:
+            logger.error("CRON_MINUTE debe ser un número entre 0 y 59 (actual: %s)", self.minute)
             sys.exit(1)
 
     def install(self) -> None:
@@ -358,14 +364,14 @@ class WindowsTaskScheduler(SchedulerManager):
             "/TR", executable_path,
             "/SC", "WEEKLY",
             "/D", "MON,TUE,WED,THU,FRI",
-            "/ST", f"{self.hour:02d}:00",
+            "/ST", f"{self.hour:02d}:{self.minute:02d}",
             "/F",
         ]
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             logger.info("Tarea programada instalada correctamente.")
-            logger.info("El script se ejecutará a las %s:00 de lunes a viernes.", self.hour)
+            logger.info("El script se ejecutará a las %02d:%02d de lunes a viernes.", self.hour, self.minute)
             logger.info("")
             logger.info("Para verificar: schtasks /Query /TN %s", self.TASK_NAME)
             logger.info("Para cambiar la hora: edita CRON_HOUR en .env y ejecuta --install de nuevo")
@@ -393,13 +399,13 @@ class CronManager(SchedulerManager):
     """Linux/macOS cron implementation"""
 
     def install(self) -> None:
-        cron_line = f"0 {self.hour} * * 1-5 DISPLAY=:0 /usr/bin/python3 {SCRIPT_PATH}"
+        cron_line = f"{self.minute} {self.hour} * * 1-5 DISPLAY=:0 /usr/bin/python3 {SCRIPT_PATH}"
         current_cron = self._get_current_cron()
         lines = self._filter_script_lines(current_cron)
         lines.append(cron_line)
         self._set_cron("\n".join(lines) + "\n")
         logger.info("Cron instalado correctamente.")
-        logger.info("El script se ejecutará a las %s:00 de lunes a viernes.", self.hour)
+        logger.info("El script se ejecutará a las %02d:%02d de lunes a viernes.", self.hour, self.minute)
         logger.info("")
         logger.info("Para verificar: crontab -l")
         logger.info("Para cambiar la hora: edita CRON_HOUR en .env y ejecuta --install de nuevo")
@@ -431,13 +437,13 @@ class CronManager(SchedulerManager):
             sys.exit(1)
 
 
-def get_scheduler_manager(hour: int) -> SchedulerManager:
+def get_scheduler_manager(hour: int, minute: int = 0) -> SchedulerManager:
     """Factory function to get the appropriate scheduler for the current OS"""
     system = platform.system()
     if system == "Windows":
-        return WindowsTaskScheduler(hour)
+        return WindowsTaskScheduler(hour, minute)
     else:
-        return CronManager(hour)
+        return CronManager(hour, minute)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -453,12 +459,12 @@ def main() -> None:
     config = Config.from_env()
 
     if args.install:
-        scheduler = get_scheduler_manager(config.cron_hour)
+        scheduler = get_scheduler_manager(config.cron_hour, config.cron_minute)
         scheduler.install()
         return
 
     if args.uninstall:
-        scheduler = get_scheduler_manager(config.cron_hour)
+        scheduler = get_scheduler_manager(config.cron_hour, config.cron_minute)
         scheduler.uninstall()
         return
 
