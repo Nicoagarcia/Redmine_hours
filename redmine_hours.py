@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import platform
 import subprocess
 import sys
 import tkinter as tk
@@ -279,14 +280,80 @@ class RedmineAutomation:
         MessageDialog.success(f"Se registraron {total}hs correctamente:\n\n{summary}")
 
 
-class CronManager:
+class SchedulerManager:
+    """Base class for task schedulers (cross-platform)"""
+
     def __init__(self, hour: int) -> None:
         self.hour = hour
-
-    def install(self) -> None:
         if not 0 <= self.hour <= 23:
             logger.error("CRON_HOUR debe ser un número entre 0 y 23 (actual: %s)", self.hour)
             sys.exit(1)
+
+    def install(self) -> None:
+        raise NotImplementedError
+
+    def uninstall(self) -> None:
+        raise NotImplementedError
+
+
+class WindowsTaskScheduler(SchedulerManager):
+    """Windows Task Scheduler implementation"""
+
+    TASK_NAME = "RedmineHoursAutomation"
+
+    def install(self) -> None:
+
+        if getattr(sys, 'frozen', False):
+
+            executable_path = sys.executable
+        else:
+
+            python_exe = sys.executable
+            executable_path = f'"{python_exe}" "{SCRIPT_PATH}"'
+
+
+        cmd = [
+            "schtasks",
+            "/Create",
+            "/TN", self.TASK_NAME,
+            "/TR", executable_path,
+            "/SC", "WEEKLY",
+            "/D", "MON,TUE,WED,THU,FRI",
+            "/ST", f"{self.hour:02d}:00",
+            "/F",
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info("Tarea programada instalada correctamente.")
+            logger.info("El script se ejecutará a las %s:00 de lunes a viernes.", self.hour)
+            logger.info("")
+            logger.info("Para verificar: schtasks /Query /TN %s", self.TASK_NAME)
+            logger.info("Para cambiar la hora: edita CRON_HOUR en .env y ejecuta --install de nuevo")
+        except subprocess.CalledProcessError as e:
+            logger.error("Error al crear la tarea programada:")
+            logger.error(e.stderr)
+            sys.exit(1)
+
+    def uninstall(self) -> None:
+        cmd = ["schtasks", "/Delete", "/TN", self.TASK_NAME, "/F"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+        if result.returncode == 0:
+            logger.info("Tarea programada desinstalada correctamente.")
+        else:
+            if "cannot find" in result.stderr.lower() or "no se puede encontrar" in result.stderr.lower():
+                logger.info("No hay tarea programada configurada.")
+            else:
+                logger.error("Error al desinstalar la tarea:")
+                logger.error(result.stderr)
+                sys.exit(1)
+
+
+class CronManager(SchedulerManager):
+    """Linux/macOS cron implementation"""
+
+    def install(self) -> None:
         cron_line = f"0 {self.hour} * * 1-5 DISPLAY=:0 /usr/bin/python3 {SCRIPT_PATH}"
         current_cron = self._get_current_cron()
         lines = self._filter_script_lines(current_cron)
@@ -325,6 +392,15 @@ class CronManager:
             sys.exit(1)
 
 
+def get_scheduler_manager(hour: int) -> SchedulerManager:
+    """Factory function to get the appropriate scheduler for the current OS"""
+    system = platform.system()
+    if system == "Windows":
+        return WindowsTaskScheduler(hour)
+    else:
+        return CronManager(hour)
+
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Automatización para registrar horas en Redmine")
     parser.add_argument("--install", action="store_true", help="Instala el cron job")
@@ -338,11 +414,13 @@ def main() -> None:
     config = Config.from_env()
 
     if args.install:
-        CronManager(config.cron_hour).install()
+        scheduler = get_scheduler_manager(config.cron_hour)
+        scheduler.install()
         return
 
     if args.uninstall:
-        CronManager(config.cron_hour).uninstall()
+        scheduler = get_scheduler_manager(config.cron_hour)
+        scheduler.uninstall()
         return
 
     errors = config.validate()
